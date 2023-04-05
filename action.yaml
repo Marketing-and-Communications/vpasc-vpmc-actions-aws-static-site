@@ -14,6 +14,13 @@ inputs:
   aws-profile-name:
     description: The name of the AWS profile used for site permissions
     required: true
+  debug-using-tmate:
+    description: Whether or not to use the TMATE server for debugging on a run failure
+    required: false
+    default: "false"
+  github-token:
+    description: The value of the GITHUB_TOKEN variable generated for each workflow
+    required: true
   global-accelerator-source:
     description: The source for the Global Accelerator if used (i.e., tamu.edu)
     required: false
@@ -25,10 +32,6 @@ inputs:
   rewrite-rules-repo:
     description: The raws GitHub URL of the rewrite rules repository 
     required: true
-  debug-using-tmate:
-    description: Whether or not to use the TMATE server for debugging on a run failure
-    required: false
-    default: "false"
 
 runs:
   using: composite
@@ -243,7 +246,7 @@ runs:
       if: ${{ github.event_name == 'pull_request' }}
       uses: robburger/terraform-pr-commenter@v1
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
       with:
         commenter_type: init
         commenter_input: ${{ format('{0}{1}', steps.tfinit.outputs.stdout, steps.tfinit.outputs.stderr) }}
@@ -258,7 +261,7 @@ runs:
       if: ${{ github.event_name == 'pull_request' }}
       uses: robburger/terraform-pr-commenter@v1
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
       with:
         commenter_type: plan
         commenter_input: ${{ format('{0}{1}', steps.tfplan.outputs.stdout, steps.tfplan.outputs.stderr) }}
