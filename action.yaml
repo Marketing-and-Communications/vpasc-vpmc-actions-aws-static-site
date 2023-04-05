@@ -1,6 +1,35 @@
 name: Create AWS static website
 description: Creates an AWS static website and uploads the IAM user keys to 1password
 
+inputs:
+  aws-account-name:
+    description: The name of the AWS account used for the site
+    required: true
+  aws-assume-role-deploy:
+    description: The AWS role used to deploy the site
+    required: true
+  aws-assume-role-dns:
+    description: The AWS role used to deploy DNS
+    required: true
+  aws-profile-name:
+    description: The name of the AWS profile used for site permissions
+    required: true
+  global-accelerator-source:
+    description: The source for the Global Accelerator if used (i.e., tamu.edu)
+    required: false
+    default: ""
+  global-accelerator-target:
+    description: The target for the Global Accelerator if used (i.e., www.tamu.edu)
+    required: false
+    default: ""
+  rewrite-rules-repo:
+    description: The raws GitHub URL of the rewrite rules repository 
+    required: true
+  debug-using-tmate:
+    description: Whether or not to use the TMATE server for debugging on a run failure
+    required: false
+    default: "false"
+
 runs:
   using: composite
   steps:
@@ -57,7 +86,7 @@ runs:
       uses: aws-actions/configure-aws-credentials@v1
       with:
         aws-region: us-east-1
-        role-to-assume: ${{ vars.AWS_ASSUME_ROLE_DEPLOY }}
+        role-to-assume: ${{ inputs.aws-assume-role-deploy }}
         role-session-name: S3BackendSession
 
     - name: Get terraform and terramate version
@@ -71,13 +100,13 @@ runs:
     - name: Set up terramate environment variables
       shell: bash
       env:
-        AWS_ACCOUNT_NAME: ${{ vars.AWS_ACCOUNT_NAME }}
-        AWS_PROFILE_NAME: ${{ vars.AWS_PROFILE_NAME }}
-        REWRITE_RULES_REPO: ${{ vars.REWRITE_RULES_REPO }}
-        AWS_ASSUME_ROLE_DEPLOY: ${{ vars.AWS_ASSUME_ROLE_DEPLOY }}
-        AWS_ASSUME_ROLE_DNS: ${{ vars.AWS_ASSUME_ROLE_DNS }}
-        GLOBAL_ACCELERATOR_SOURCE: ${{ vars.GLOBAL_ACCELERATOR_SOURCE }}
-        GLOBAL_ACCELERATOR_TARGET: ${{ vars.GLOBAL_ACCELERATOR_TARGET }}
+        AWS_ACCOUNT_NAME: ${{ inputs.aws-account-name }}
+        AWS_PROFILE_NAME: ${{ inputs.aws-profile-name }}
+        REWRITE_RULES_REPO: ${{ inputs.rewrite-rules-repo }}
+        AWS_ASSUME_ROLE_DEPLOY: ${{ inputs.aws-assume-role-deploy }}
+        AWS_ASSUME_ROLE_DNS: ${{ inputs.aws-assume-role-dns }}
+        GLOBAL_ACCELERATOR_SOURCE: ${{ inputs.global-accelerator-source }}
+        GLOBAL_ACCELERATOR_TARGET: ${{ inputs.global-accelerator-target }}
       run: |
         echo "TM_VAR_aws_account_name_${ENV}=${AWS_ACCOUNT_NAME}" >> $GITHUB_ENV
         echo "TM_VAR_aws_profile_name_${ENV}=${AWS_PROFILE_NAME}" >> $GITHUB_ENV
@@ -148,7 +177,7 @@ runs:
     - name: Write S3 backend configuration files
       shell: bash
       env:
-        AWS_ACCOUNT_NAME: ${{ vars.AWS_ACCOUNT_NAME }}
+        AWS_ACCOUNT_NAME: ${{ inputs.aws-account-name }}
       run: |
         ROUTE53_DOMAIN=$(cat ./site_settings.yaml | grep route53_domain | cut -d: -f2 | sed -e 's/ //g' -e 's/"//g')
         cat <<EOF > ./terraform/stacks/pre-site/backend.hcl
@@ -167,7 +196,7 @@ runs:
       uses: aws-actions/configure-aws-credentials@v1
       with:
         aws-region: us-east-1
-        role-to-assume: ${{ vars.AWS_ASSUME_ROLE_DNS }}
+        role-to-assume: ${{ inputs.aws-assume-role-dns }}
         role-session-name: S3PreSiteBackendSession
     # All environments (i.e., dev, staging, prod) run the same pre-site stack, 
     # because they all share the same site DNS zone. It's possible that any 
@@ -202,7 +231,7 @@ runs:
       uses: aws-actions/configure-aws-credentials@v1
       with:
         aws-region: us-east-1
-        role-to-assume: ${{ vars.AWS_ASSUME_ROLE_DEPLOY }}
+        role-to-assume: ${{ inputs.aws-assume-role-deploy }}
         role-session-name: S3SiteBackendSession
 
     - name: Run terraform init
@@ -256,7 +285,7 @@ runs:
           status -        `${{ job.status }}`
 
     - name: Debug with TMATE if the TMATE environment variable is set to "true" and something failed
-      if: ${{ failure() && vars.TMATE == 'true' }}
+      if: ${{ failure() && inputs.debug-using-tmate == 'true' }}
       uses: mxschmitt/action-tmate@v3
 
     - name: Stop the local 1password connect server
