@@ -1,35 +1,23 @@
-name: GPT Generate (Azure)
-description: GPT generation using Azure with OIDC authentication
-inputs:
-  azure-tenant-id:
-    description: The ID of the tenant that will be used for OIDC authentication.
-    required: false
-    default: "68f381e3-46da-47b9-ba57-6f322b8f0da1"
-  frequency_penalty:
-    description: |
-      A value between 0 and 2.
-      Reduce the chance of repeating a token proportionally based on how often it 
-      has appeared in the text so far. This decreases the likelihood of repeating 
-      the exact same text in a response.
-    required: false
-    default: "0"
-  
-outputs:
-  generated-response:
-    description: The GPT generated response
-    value: ${{ steps.gpt-generated-response.outputs.response }}
+name: Create AWS static website
+description: Creates an AWS static website and uploads the IAM user keys to 1password
 
 runs:
   using: composite
   steps:
-    - name: Checkout repo
+    - name: Checkout base repo
       uses: actions/checkout@v3
 
-    - name: Configure git settings
+    - name: Checkout actions repo
+      uses: actions/checkout@v3
+      with:
+        repository: Marketing-and-Communications/vpasc-vpmc-actions-aws-static-site
+        path: action
+
+    - name: Modify git configuration
       shell: bash
       run: |
-        git config --global user.email "actions-bot@tamu.edu"
-        git config --global user.name "Actions Bot"
+          git config --global user.email "actions-bot@tamu.edu"
+          git config --global user.name "Actions Bot"
 
     - name: Get the environment based on the target branch for a PR or push
       shell: bash
@@ -116,7 +104,8 @@ runs:
 
     - name: Run terramate generate
       shell: bash
-      run: terramate generate
+      run: |
+        terramate generate
 
     # This will bootstrap the remote state resources (i.e., S3 bucket and DynamoDB table) so that
     # the other stacks will be able to use the S3 remote state backend
@@ -191,6 +180,24 @@ runs:
         terramate run --tags=pre-site:${ENV} terraform init -backend-config=./backend.hcl && \
         terramate run --tags=pre-site:${ENV} terraform apply -auto-approve -lock-timeout=5m
 
+    - name: Fetch credentials for creating and using the 1password connect server from AWS
+      shell: bash
+      run: |
+        echo -e $(aws secretsmanager get-secret-value --secret-id "1password/it-svc-aws-static-sites/api" \
+          --query 'SecretString' --output text | jq -r '."1password-credentials.json"') > ./1password/1password-credentials.json
+        
+        OP_CONNECT_TOKEN=$(aws secretsmanager get-secret-value --secret-id "1password/it-svc-aws-static-sites/api" \
+          --query 'SecretString' --output text | jq -r '."1password-access-token"')
+
+        # Mark this as sensitive
+        echo "::add-mask::$OP_CONNECT_TOKEN"
+        echo "OP_CONNECT_TOKEN=${OP_CONNECT_TOKEN}" >> $GITHUB_ENV 
+
+    - name: Start the local 1password connect server to enable API access for terraform
+      shell: bash
+      working-directory: ./action/1password
+      run: docker compose up -d
+
     - name: Configure AWS Credentials that will be used for site S3 backend (site deployment)
       uses: aws-actions/configure-aws-credentials@v1
       with:
@@ -251,3 +258,9 @@ runs:
     - name: Debug with TMATE if the TMATE environment variable is set to "true" and something failed
       if: ${{ failure() && vars.TMATE == 'true' }}
       uses: mxschmitt/action-tmate@v3
+
+    - name: Stop the local 1password connect server
+      shell: bash
+      if: always()
+      working-directory: ./action/1password
+      run: docker compose down
