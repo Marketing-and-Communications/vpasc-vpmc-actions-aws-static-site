@@ -216,7 +216,7 @@ runs:
       shell: bash
       run: |
         echo -e $(aws secretsmanager get-secret-value --secret-id "1password/it-svc-aws-static-sites/api" \
-          --query 'SecretString' --output text | jq -r '."1password-credentials.json"') > ./1password/1password-credentials.json
+          --query 'SecretString' --output text | jq -r '."1password-credentials.json"') > ./action/1password/1password-credentials.json
         
         OP_CONNECT_TOKEN=$(aws secretsmanager get-secret-value --secret-id "1password/it-svc-aws-static-sites/api" \
           --query 'SecretString' --output text | jq -r '."1password-access-token"')
